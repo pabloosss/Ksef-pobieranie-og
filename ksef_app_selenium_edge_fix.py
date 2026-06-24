@@ -21,8 +21,10 @@ from selenium.common.exceptions import WebDriverException
 APP_TITLE = "Program do pobierania FV KSeF - Emerlog"
 KSEF_URL = "https://ap.ksef.mf.gov.pl/web/invoice-list"
 MAX_PAGES = 300
-DOWNLOAD_TIMEOUTS = {10: 90, 5: 60, 1: 35}
-NO_SIGNAL_TIMEOUTS = {10: 18, 5: 14, 1: 10}
+FAST_BATCH_SIZES = (10, 5, 1)
+DOWNLOAD_TIMEOUTS = {10: 70, 5: 45, 1: 20}
+NO_SIGNAL_TIMEOUTS = {10: 8, 5: 6, 1: 4}
+PREVIEW_TIMEOUT = 25
 
 
 def app_dir():
@@ -83,16 +85,20 @@ class KsefDownloader:
             pass
         style.configure("Red.TButton", font=("Segoe UI", 11, "bold"), padding=12)
         style.configure("Black.TButton", font=("Segoe UI", 10, "bold"), padding=11)
+
         main = tk.Frame(self.root, bg="white", padx=18, pady=18)
         main.pack(fill="both", expand=True)
+
         header = tk.Frame(main, bg="black", padx=24, pady=20)
         header.pack(fill="x", pady=(0, 14))
         self.load_logo(header)
         tk.Label(header, text=APP_TITLE, font=("Segoe UI", 24, "bold"), bg="black", fg="white").pack(anchor="w", pady=(12, 0))
+
         stats = tk.Frame(main, bg="white")
         stats.pack(fill="x", pady=(0, 12))
         self.stat(stats, "Znalezione FV", self.found_var).pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.stat(stats, "Pobrane FV", self.done_var).pack(side="left", fill="x", expand=True, padx=(8, 0))
+
         body = tk.Frame(main, bg="white")
         body.pack(fill="both", expand=True)
         left = tk.Frame(body, bg="white", bd=1, relief="solid", padx=18, pady=18, width=430)
@@ -100,14 +106,17 @@ class KsefDownloader:
         left.pack_propagate(False)
         right = tk.Frame(body, bg="white", bd=1, relief="solid", padx=18, pady=18)
         right.pack(side="left", fill="both", expand=True)
+
         ttk.Button(left, text="Start / Otwórz KSeF", style="Red.TButton", command=self.start_browser).pack(fill="x", pady=(0, 10))
         ttk.Button(left, text="Otwórz folder", style="Black.TButton", command=self.open_folder).pack(fill="x", pady=(0, 16))
         ttk.Button(left, text="Pobierz FV", style="Red.TButton", command=self.download_all).pack(fill="x")
+
         tk.Label(left, text="Postęp", bg="white", font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(24, 8))
         self.progress = ttk.Progressbar(left, maximum=100)
         self.progress.pack(fill="x")
         tk.Label(left, textvariable=self.step_var, bg="#fafafa", wraplength=360, justify="left").pack(fill="x", pady=(12, 0))
         tk.Label(left, textvariable=self.result_var, bg="white", fg="#d10f14", wraplength=370, justify="left").pack(anchor="w", pady=(12, 0))
+
         tk.Label(right, text="Log operacji", bg="white", font=("Segoe UI", 17, "bold")).pack(anchor="w", pady=(0, 12))
         self.box = tk.Text(right, bg="black", fg="white", font=("Consolas", 10), padx=14, pady=14, wrap="word")
         self.box.pack(fill="both", expand=True)
@@ -196,7 +205,7 @@ class KsefDownloader:
             "plugins.always_open_pdf_externally": True,
         })
         driver = webdriver.Edge(options=options)
-        driver.implicitly_wait(1)
+        driver.implicitly_wait(0.5)
         driver.set_page_load_timeout(90)
         return driver
 
@@ -229,7 +238,7 @@ class KsefDownloader:
     def close_popups(self):
         try:
             ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
-            time.sleep(0.2)
+            time.sleep(0.15)
         except Exception:
             pass
 
@@ -263,7 +272,7 @@ class KsefDownloader:
         rows = self.rows()
         return "EMPTY" if not rows else "|".join(item["id"] for item in rows)
 
-    def click_any(self, candidates, timeout=3, delay=0.6):
+    def click_any(self, candidates, timeout=2, delay=0.35):
         for by, value in candidates:
             try:
                 elements = WebDriverWait(self.driver, timeout).until(EC.presence_of_all_elements_located((by, value)))
@@ -292,10 +301,10 @@ class KsefDownloader:
             (By.CSS_SELECTOR, "[role='button'][aria-label*='Następna']"),
             (By.XPATH, "//*[self::button or @role='button'][contains(., 'Następna') or contains(., 'Next')]")
         ]
-        if not self.click_any(candidates, 2, 0.8):
+        if not self.click_any(candidates, 2, 0.5):
             return False
-        for _ in range(10):
-            time.sleep(0.35)
+        for _ in range(8):
+            time.sleep(0.3)
             after = self.signature()
             if after != before and after != "EMPTY":
                 self.log("[OK] Następna strona")
@@ -311,9 +320,9 @@ class KsefDownloader:
         ]
         for _ in range(50):
             before = self.signature()
-            if not self.click_any(candidates, 1, 0.3):
+            if not self.click_any(candidates, 1, 0.2):
                 break
-            time.sleep(0.2)
+            time.sleep(0.15)
             if self.signature() == before:
                 break
 
@@ -328,13 +337,13 @@ class KsefDownloader:
             try:
                 if self.is_selected(item["check"]):
                     item["check"].click()
-                    time.sleep(0.04)
+                    time.sleep(0.03)
             except Exception:
                 pass
 
     def select_rows(self, rows):
         self.clear_checks()
-        time.sleep(0.1)
+        time.sleep(0.07)
         selected_ids = []
         for item in rows:
             fresh = self.find_row(item["id"])
@@ -349,7 +358,7 @@ class KsefDownloader:
             for method in (lambda: checkbox.click(), lambda: ActionChains(self.driver).move_to_element(checkbox).click().perform(), lambda: self.driver.execute_script("arguments[0].click();", checkbox)):
                 try:
                     method()
-                    time.sleep(0.12)
+                    time.sleep(0.08)
                     if self.is_selected(checkbox):
                         ok = True
                         break
@@ -424,20 +433,20 @@ class KsefDownloader:
                     return path
             if not saw_signal and time.time() - start >= signal_timeout:
                 return None
-            time.sleep(1)
+            time.sleep(0.7)
         return None
 
     def try_download_menu_format(self, session, format_candidates, label, timeout, signal_timeout):
         before = self.snapshot([session, self.download_dir])
         open_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a][contains(., 'Pobierz') or contains(., 'Eksportuj')]")]
-        if not self.click_any(open_btn, 3, 0.5):
+        if not self.click_any(open_btn, 2, 0.25):
             self.close_popups()
             return None
-        direct = self.wait_file(session, before, 4, 2)
+        direct = self.wait_file(session, before, 2, 1)
         if direct:
             self.log("[INFO] Pobieranie ruszyło bez wyboru formatu.")
             return direct
-        if not self.click_any(format_candidates, 2, 0.5):
+        if not self.click_any(format_candidates, 1, 0.25):
             self.close_popups()
             return None
         self.log(f"[INFO] Wybrano {label}")
@@ -448,8 +457,8 @@ class KsefDownloader:
 
     def download_from_list(self, session, count):
         self.set_download_dir(session)
-        timeout = DOWNLOAD_TIMEOUTS.get(count, 45)
-        signal_timeout = NO_SIGNAL_TIMEOUTS.get(count, 10)
+        timeout = DOWNLOAD_TIMEOUTS.get(count, 30)
+        signal_timeout = NO_SIGNAL_TIMEOUTS.get(count, 4)
         zip_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'zip', 'ZIP'), 'ZIP')]")]
         pdf_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'pdf', 'PDF'), 'PDF')]")]
         found = self.try_download_menu_format(session, zip_btn, "ZIP", timeout, signal_timeout)
@@ -457,7 +466,7 @@ class KsefDownloader:
             return found
         if count == 1:
             self.log("[INFO] ZIP z listy nie ruszył. Próbuję PDF z listy.")
-            found = self.try_download_menu_format(session, pdf_btn, "PDF", 30, 10)
+            found = self.try_download_menu_format(session, pdf_btn, 18, 4, "PDF")
             if found:
                 return found
         return None
@@ -472,57 +481,6 @@ class KsefDownloader:
                 pass
             return True
         return False
-
-    def open_preview_for_row(self, row_id):
-        item = self.find_row(row_id)
-        if not item:
-            return False
-        row = item["row"]
-        before = self.signature()
-        candidates = [
-            ".//*[self::button or self::a or @role='button'][contains(., 'podgl') or contains(., 'Podgl') or contains(@aria-label, 'podgl') or contains(@title, 'podgl')]",
-            ".//*[self::button or self::a or @role='button'][contains(., 'Przejdź') or contains(., 'Przejdz')]"
-        ]
-        for xpath in candidates:
-            try:
-                for el in row.find_elements(By.XPATH, xpath):
-                    if not el.is_displayed():
-                        continue
-                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
-                    try:
-                        el.click()
-                    except Exception:
-                        self.driver.execute_script("arguments[0].click();", el)
-                    time.sleep(2)
-                    return True
-            except Exception:
-                pass
-        try:
-            self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", row)
-            ActionChains(self.driver).double_click(row).perform()
-            time.sleep(2)
-            return self.signature() != before
-        except Exception:
-            return False
-
-    def return_to_list(self):
-        try:
-            self.driver.back()
-            time.sleep(2)
-        except Exception:
-            pass
-        self.close_popups()
-
-    def download_from_preview(self, session):
-        self.set_download_dir(session)
-        pdf_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'pdf', 'PDF'), 'PDF')]")]
-        xml_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'xml', 'XML'), 'XML')]")]
-        zip_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'zip', 'ZIP'), 'ZIP')]")]
-        for label, candidates in (("PDF z podglądu", pdf_btn), ("XML z podglądu", xml_btn), ("ZIP z podglądu", zip_btn)):
-            found = self.try_download_menu_format(session, candidates, label, 30, 8)
-            if found:
-                return found
-        return None
 
     def try_list_batch(self, rows, session, batch_no, size):
         selected = self.select_rows(rows[:size])
@@ -542,11 +500,64 @@ class KsefDownloader:
         self.clear_checks()
         return selected
 
-    def try_single_all_methods(self, row, session):
-        selected = self.try_list_batch([row], session, 0, 1)
-        if selected:
-            return selected
-        self.log("[INFO] Próbuję pobrać pojedynczą FV z podglądu faktury.")
+    def open_preview_for_row(self, row_id):
+        item = self.find_row(row_id)
+        if not item:
+            return False
+        row = item["row"]
+        candidates = [
+            ".//*[self::button or self::a or @role='button'][contains(., 'podgl') or contains(., 'Podgl') or contains(@aria-label, 'podgl') or contains(@title, 'podgl')]",
+            ".//*[self::button or self::a or @role='button'][contains(., 'Przejdź') or contains(., 'Przejdz')]"
+        ]
+        for xpath in candidates:
+            try:
+                for el in row.find_elements(By.XPATH, xpath):
+                    if not el.is_displayed():
+                        continue
+                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+                    try:
+                        el.click()
+                    except Exception:
+                        self.driver.execute_script("arguments[0].click();", el)
+                    time.sleep(1.2)
+                    return True
+            except Exception:
+                pass
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", row)
+            ActionChains(self.driver).double_click(row).perform()
+            time.sleep(1.2)
+            return True
+        except Exception:
+            return False
+
+    def return_to_list(self):
+        try:
+            self.driver.back()
+            time.sleep(1.2)
+        except Exception:
+            pass
+        self.close_popups()
+
+    def download_from_preview(self, session):
+        self.set_download_dir(session)
+        pdf_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'pdf', 'PDF'), 'PDF')]")]
+        xml_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'xml', 'XML'), 'XML')]")]
+        zip_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'zip', 'ZIP'), 'ZIP')]")]
+        for label, candidates in (("PDF z podglądu", pdf_btn), ("XML z podglądu", xml_btn), ("ZIP z podglądu", zip_btn)):
+            found = self.try_download_menu_format(session, candidates, label, PREVIEW_TIMEOUT, 5)
+            if found:
+                return found
+        return None
+
+    def try_single_fast(self, row, session):
+        return self.try_list_batch([row], session, 0, 1)
+
+    def try_single_deep(self, row, session):
+        result = self.try_single_fast(row, session)
+        if result:
+            return result
+        self.log("[INFO] Dogrywka: próbuję podgląd faktury.")
         self.clear_checks()
         if self.open_preview_for_row(row["id"]):
             path = self.download_from_preview(session)
@@ -560,20 +571,21 @@ class KsefDownloader:
             self.log("[UWAGA] Nie udało się wejść w podgląd tej FV.")
         return None
 
-    def process_current_page(self, page_rows, processed, failed, session, batch_no):
-        remaining_ids = [item["id"] for item in page_rows if item["id"] not in processed and item["id"] not in failed]
+    def process_current_page_fast(self, page_rows, processed, deferred, session, batch_no):
+        remaining_ids = [item["id"] for item in page_rows if item["id"] not in processed and item["id"] not in deferred]
         while remaining_ids:
             fresh_rows = [item for item in self.rows() if item["id"] in remaining_ids]
             if not fresh_rows:
                 break
             success = None
-            for size in (10, 5):
-                if len(fresh_rows) < 2:
-                    break
-                chunk = fresh_rows[:min(size, len(fresh_rows))]
-                success = self.try_list_batch(chunk, session, batch_no, len(chunk))
-                if success:
-                    break
+            if len(fresh_rows) >= 2:
+                for size in (10, 5):
+                    chunk = fresh_rows[:min(size, len(fresh_rows))]
+                    if len(chunk) < 2:
+                        continue
+                    success = self.try_list_batch(chunk, session, batch_no, len(chunk))
+                    if success:
+                        break
             if success:
                 for item in success:
                     processed.add(item["id"])
@@ -581,33 +593,68 @@ class KsefDownloader:
                         remaining_ids.remove(item["id"])
                 batch_no += 1
                 self.done_var.set(str(len(processed)))
-                self.progress_set(len(processed), max(1, int(self.found_var.get() or "1")), "Pobieranie faktur")
-                time.sleep(0.4)
+                self.progress_set(len(processed), max(1, int(self.found_var.get() or "1")), "Szybkie pobieranie")
+                time.sleep(0.25)
                 continue
-            single = fresh_rows[0]
-            result = self.try_single_all_methods(single, session)
+
+            one = fresh_rows[0]
+            result = self.try_single_fast(one, session)
             if result:
                 for item in result:
                     processed.add(item["id"])
                     if item["id"] in remaining_ids:
                         remaining_ids.remove(item["id"])
                 self.done_var.set(str(len(processed)))
-                self.progress_set(len(processed), max(1, int(self.found_var.get() or "1")), "Pobieranie faktur")
+                self.progress_set(len(processed), max(1, int(self.found_var.get() or "1")), "Szybkie pobieranie")
             else:
-                failed.add(single["id"])
-                if single["id"] in remaining_ids:
-                    remaining_ids.remove(single["id"])
-                self.log(f"[BŁĄD] Nie udało się pobrać FV żadną metodą: {single['text'][:180]}")
+                deferred.add(one["id"])
+                if one["id"] in remaining_ids:
+                    remaining_ids.remove(one["id"])
+                self.log(f"[INFO] Odkładam na dogrywkę po przejściu wszystkich stron: {one['text'][:160]}")
         return batch_no
+
+    def recover_deferred_after_all_pages(self, manifest, processed, deferred, session):
+        if not deferred:
+            return
+        self.log(f"[INFO] Szybki przebieg zakończony. Dogrywka braków: {len(deferred)}")
+        self.go_first_page()
+        time.sleep(0.5)
+        seen_pages = set()
+        page_no = 0
+        while page_no < MAX_PAGES and deferred:
+            rows = self.rows()
+            sig = self.signature()
+            if not rows or sig == "EMPTY" or sig in seen_pages:
+                break
+            seen_pages.add(sig)
+            page_no += 1
+            ids_on_page = [item["id"] for item in rows if item["id"] in deferred and item["id"] not in processed]
+            for row_id in ids_on_page:
+                fresh = self.find_row(row_id)
+                if not fresh:
+                    continue
+                self.log(f"[INFO] Dogrywka FV: {fresh['text'][:160]}")
+                result = self.try_single_deep(fresh, session)
+                if result:
+                    for item in result:
+                        processed.add(item["id"])
+                        deferred.discard(item["id"])
+                    self.done_var.set(str(len(processed)))
+                    self.progress_set(len(processed), max(1, len(manifest)), "Dogrywka braków")
+                else:
+                    self.log(f"[BŁĄD] Nadal nie pobrano: {fresh['text'][:160]}")
+            if not self.go_next_page():
+                break
 
     def download_all_pages(self, session):
         manifest = []
         manifest_ids = set()
         processed = set()
-        failed = set()
+        deferred = set()
         seen_pages = set()
         batch_no = 1
         page_no = 0
+
         self.go_first_page()
         time.sleep(0.5)
         while page_no < MAX_PAGES:
@@ -623,9 +670,11 @@ class KsefDownloader:
                     manifest.append({"row_id": item["id"], "text": item["text"]})
             self.found_var.set(str(len(manifest)))
             self.log(f"[INFO] Strona {page_no}: {len(page_rows)} FV. Razem wykryto: {len(manifest)}")
-            batch_no = self.process_current_page(page_rows, processed, failed, session, batch_no)
+            batch_no = self.process_current_page_fast(page_rows, processed, deferred, session, batch_no)
             if not self.go_next_page():
                 break
+
+        self.recover_deferred_after_all_pages(manifest, processed, deferred, session)
         missing = [item for item in manifest if item["row_id"] not in processed]
         return manifest, processed, missing
 
@@ -636,6 +685,7 @@ class KsefDownloader:
             handle.write(f"Znalezione FV: {len(manifest)}\n")
             handle.write(f"Pobrane FV: {len(processed)}\n")
             handle.write(f"Brakujące: {len(missing)}\n")
+
         audit_path = os.path.join(session, "raport_weryfikacji.txt")
         with open(audit_path, "w", encoding="utf-8") as handle:
             handle.write("STATUS | ID / NUMER | OPIS Z WIERSZA KSEF\n")
@@ -643,6 +693,7 @@ class KsefDownloader:
             for item in manifest:
                 status = "POBRANE" if item["row_id"] in processed else "BRAK"
                 handle.write(f"{status} | {item['row_id']} | {item['text']}\n")
+
         missing_path = None
         note_path = None
         if missing:
@@ -656,7 +707,7 @@ class KsefDownloader:
                 handle.write("=" * 70 + "\n")
                 handle.write(f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 handle.write(f"Liczba brakujących FV: {len(missing)}\n\n")
-                handle.write("Program próbował: paczka z listy, pojedyncza FV z listy, PDF z listy, podgląd faktury, PDF/XML/ZIP z podglądu.\n\n")
+                handle.write("Program próbował: paczka z listy, pojedyncza FV z listy, PDF z listy, a na końcu dogrywkę z podglądu faktury.\n\n")
                 handle.write("Lista braków:\n")
                 for idx, item in enumerate(missing, 1):
                     handle.write(f"{idx}. {item['row_id']} | {item['text']}\n")
