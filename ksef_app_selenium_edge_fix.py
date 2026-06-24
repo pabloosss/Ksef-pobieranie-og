@@ -12,6 +12,7 @@ from tkinter import ttk, messagebox
 from selenium import webdriver
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -21,8 +22,9 @@ APP_TITLE = "Program do pobierania FV KSeF - Emerlog"
 KSEF_URL = "https://ap.ksef.mf.gov.pl/web/invoice-list"
 MAX_SCAN_PAGES = 300
 MAX_RETRY_PASSES = 2
-DOWNLOAD_TIMEOUT = 120
 BATCH_SIZES = (10, 5, 1)
+DOWNLOAD_TIMEOUTS = {10: 90, 5: 60, 1: 30}
+NO_DOWNLOAD_SIGNAL_TIMEOUTS = {10: 18, 5: 14, 1: 10}
 
 
 def app_dir():
@@ -120,11 +122,7 @@ class App:
         self.log(f"[INFO] Folder pobierania: {self.download_dir}")
 
     def load_logo(self, parent):
-        folders = [
-            os.path.join(self.base_dir, "grafiki"),
-            os.path.join(self.base_dir, "grafika"),
-            self.base_dir,
-        ]
+        folders = [os.path.join(self.base_dir, "grafiki"), os.path.join(self.base_dir, "grafika"), self.base_dir]
         names = ["logo.png", "emerloglogo.png", "emerlog_logo.png", "Logo.png", "LOGO.png"]
         candidates = []
         for folder in folders:
@@ -198,14 +196,9 @@ class App:
         options.add_argument("--start-maximized")
         options.add_argument("--disable-notifications")
         options.add_argument("--disable-popup-blocking")
-        options.add_experimental_option("prefs", {
-            "download.default_directory": self.download_dir,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "plugins.always_open_pdf_externally": True,
-        })
+        options.add_experimental_option("prefs", {"download.default_directory": self.download_dir, "download.prompt_for_download": False, "download.directory_upgrade": True, "plugins.always_open_pdf_externally": True})
         driver = webdriver.Edge(options=options)
-        driver.implicitly_wait(2)
+        driver.implicitly_wait(1)
         driver.set_page_load_timeout(90)
         return driver
 
@@ -234,6 +227,13 @@ class App:
             os.startfile(self.download_dir)
         except Exception:
             messagebox.showinfo("Folder", self.download_dir)
+
+    def close_popups(self):
+        try:
+            ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+            time.sleep(0.2)
+        except Exception:
+            pass
 
     def rows(self):
         rows = []
@@ -284,16 +284,11 @@ class App:
 
     def next_page(self):
         before = self.signature()
-        candidates = [
-            (By.CSS_SELECTOR, "button[aria-label*='Następna']"),
-            (By.CSS_SELECTOR, "button[title*='Następna']"),
-            (By.CSS_SELECTOR, "[role='button'][aria-label*='Następna']"),
-            (By.XPATH, "//*[self::button or @role='button'][contains(., 'Następna') or contains(., 'Next')]")
-        ]
-        if not self.click_any(candidates, 2, 1.2):
+        candidates = [(By.CSS_SELECTOR, "button[aria-label*='Następna']"), (By.CSS_SELECTOR, "button[title*='Następna']"), (By.CSS_SELECTOR, "[role='button'][aria-label*='Następna']"), (By.XPATH, "//*[self::button or @role='button'][contains(., 'Następna') or contains(., 'Next')]")]
+        if not self.click_any(candidates, 2, 0.8):
             return False
-        for _ in range(15):
-            time.sleep(0.4)
+        for _ in range(10):
+            time.sleep(0.35)
             after = self.signature()
             if after != before and after != "EMPTY":
                 self.log("[OK] Następna strona")
@@ -301,23 +296,19 @@ class App:
         return False
 
     def first_page(self):
-        candidates = [
-            (By.CSS_SELECTOR, "button[aria-label*='Poprzednia']"),
-            (By.CSS_SELECTOR, "button[title*='Poprzednia']"),
-            (By.CSS_SELECTOR, "[role='button'][aria-label*='Poprzednia']"),
-            (By.XPATH, "//*[self::button or @role='button'][contains(., 'Poprzednia') or contains(., 'Previous')]")
-        ]
+        candidates = [(By.CSS_SELECTOR, "button[aria-label*='Poprzednia']"), (By.CSS_SELECTOR, "button[title*='Poprzednia']"), (By.CSS_SELECTOR, "[role='button'][aria-label*='Poprzednia']"), (By.XPATH, "//*[self::button or @role='button'][contains(., 'Poprzednia') or contains(., 'Previous')]")]
         for _ in range(50):
             before = self.signature()
-            if not self.click_any(candidates, 1, 0.8):
+            if not self.click_any(candidates, 1, 0.3):
                 break
+            time.sleep(0.2)
             if self.signature() == before:
                 break
 
     def scan_manifest(self):
         result, ids, seen = [], set(), set()
         self.first_page()
-        time.sleep(0.8)
+        time.sleep(0.5)
         page = 0
         while page < MAX_SCAN_PAGES:
             rows = self.rows()
@@ -336,7 +327,7 @@ class App:
             if not self.next_page():
                 break
         self.first_page()
-        time.sleep(0.8)
+        time.sleep(0.5)
         return result
 
     def selected(self, checkbox):
@@ -350,13 +341,13 @@ class App:
             try:
                 if self.selected(row["check"]):
                     row["check"].click()
-                    time.sleep(0.08)
+                    time.sleep(0.04)
             except Exception:
                 pass
 
     def select_rows(self, rows):
         self.clear_checks()
-        time.sleep(0.2)
+        time.sleep(0.1)
         selected = []
         for row in rows:
             check = row["check"]
@@ -368,7 +359,7 @@ class App:
             for method in (lambda: check.click(), lambda: ActionChains(self.driver).move_to_element(check).click().perform(), lambda: self.driver.execute_script("arguments[0].click();", check)):
                 try:
                     method()
-                    time.sleep(0.18)
+                    time.sleep(0.12)
                     if self.selected(check):
                         ok = True
                         break
@@ -391,15 +382,27 @@ class App:
     def snapshot(self, folders):
         return {folder: set(os.listdir(folder)) if os.path.isdir(folder) else set() for folder in folders}
 
-    def wait_file(self, session, before):
+    def unique_path(self, folder, name):
+        base, ext = os.path.splitext(name)
+        path = os.path.join(folder, name)
+        counter = 1
+        while os.path.exists(path):
+            path = os.path.join(folder, f"{base}_{counter}{ext}")
+            counter += 1
+        return path
+
+    def wait_file(self, session, before, timeout, signal_timeout):
         start = time.time()
         sizes, stable = {}, {}
-        while time.time() - start < DOWNLOAD_TIMEOUT:
+        saw_download_signal = False
+        while time.time() - start < timeout:
             for folder, old in before.items():
                 try:
                     names = set(os.listdir(folder))
                 except Exception:
                     continue
+                if any(name.endswith((".crdownload", ".tmp", ".part")) for name in names):
+                    saw_download_signal = True
                 candidates = []
                 for name in names:
                     if name.endswith((".crdownload", ".tmp", ".part")):
@@ -407,6 +410,8 @@ class App:
                     path = os.path.join(folder, name)
                     if os.path.isfile(path) and (name not in old or os.path.getmtime(path) >= start - 1):
                         candidates.append(path)
+                if candidates:
+                    saw_download_signal = True
                 if not candidates:
                     continue
                 path = max(candidates, key=os.path.getmtime)
@@ -415,26 +420,42 @@ class App:
                     continue
                 stable[path] = stable.get(path, 0) + 1 if sizes.get(path) == size else 0
                 sizes[path] = size
-                if stable[path] >= 3:
+                if stable[path] >= 2:
+                    if os.path.abspath(os.path.dirname(path)) != os.path.abspath(session):
+                        target = self.unique_path(session, os.path.basename(path))
+                        try:
+                            os.replace(path, target)
+                            return target
+                        except Exception:
+                            return path
                     return path
+            if not saw_download_signal and time.time() - start >= signal_timeout:
+                return None
             time.sleep(1)
         return None
 
-    def download_selected(self, session):
+    def download_selected(self, session, batch_size):
         self.set_download_dir(session)
         before = self.snapshot([session, self.download_dir])
         open_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a][contains(., 'Pobierz') or contains(., 'Eksportuj')]")]
         zip_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'zip', 'ZIP'), 'ZIP')]")]
         pdf_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'pdf', 'PDF'), 'PDF')]")]
-        if not self.click_any(open_btn, 4, 1):
+        if not self.click_any(open_btn, 3, 0.6):
+            self.close_popups()
             return None
-        if self.click_any(zip_btn, 3, 1):
+        if self.click_any(zip_btn, 2, 0.6):
             self.log("[INFO] Wybrano ZIP")
-        elif self.click_any(pdf_btn, 3, 1):
+        elif self.click_any(pdf_btn, 2, 0.6):
             self.log("[INFO] Wybrano PDF")
         else:
+            self.close_popups()
             return None
-        return self.wait_file(session, before)
+        timeout = DOWNLOAD_TIMEOUTS.get(batch_size, 45)
+        signal_timeout = NO_DOWNLOAD_SIGNAL_TIMEOUTS.get(batch_size, 10)
+        found = self.wait_file(session, before, timeout, signal_timeout)
+        if found is None:
+            self.close_popups()
+        return found
 
     def extract_zip(self, path, session):
         if zipfile.is_zipfile(path):
@@ -454,9 +475,9 @@ class App:
             return None
         self.step(f"Pobieranie partii {batch_no}")
         self.log(f"[INFO] Pobieram partię {batch_no}. Rozmiar: {len(selected)} FV")
-        path = self.download_selected(session)
+        path = self.download_selected(session, len(selected))
         if not path:
-            self.log(f"[UWAGA] Nie pobrano partii {batch_no}. Spróbuję mniejszą paczką.")
+            self.log(f"[UWAGA] Nie widać startu pobierania. Bez czekania 120 s przechodzę dalej.")
             self.clear_checks()
             return None
         self.log(f"[OK] Zapisano: {os.path.basename(path)}")
@@ -471,7 +492,7 @@ class App:
         batch_no = 1
         seen = set()
         self.first_page()
-        time.sleep(0.8)
+        time.sleep(0.5)
         while len(seen) < MAX_SCAN_PAGES:
             rows = self.rows()
             sig = self.signature()
@@ -498,10 +519,10 @@ class App:
                     self.update_progress(len(processed), max(1, len(target_ids)), "Pobieranie faktur")
                     self.log(f"[OK] Łącznie pobrano: {len(processed)}/{len(target_ids)}")
                     batch_no += 1
-                    time.sleep(1)
+                    time.sleep(0.4)
                 else:
                     failed.add(remaining[0]["id"])
-                    self.log(f"[BŁĄD] Pojedyncza FV nie poszła, zostawiam do retry: {remaining[0]['text'][:160]}")
+                    self.log(f"[BŁĄD] Ta FV nie wystartowała. Zostawiam do retry: {remaining[0]['text'][:160]}")
             if len(processed) >= len(target_ids):
                 break
             if not self.next_page():
