@@ -60,6 +60,7 @@ class App:
         self.root.geometry("1200x840")
         self.root.configure(bg="white")
         self.driver = None
+        self.logo_img = None
         self.base_dir = app_dir()
         self.download_dir = os.path.join(self.base_dir, "pobrane_fv")
         os.makedirs(self.download_dir, exist_ok=True)
@@ -87,7 +88,7 @@ class App:
         main.pack(fill="both", expand=True)
         header = tk.Frame(main, bg="black", padx=24, pady=20)
         header.pack(fill="x", pady=(0, 14))
-        tk.Label(header, text="EMERLOG", font=("Segoe UI", 28, "bold italic"), bg="black", fg="white").pack(anchor="w")
+        self.load_logo(header)
         tk.Label(header, text=APP_TITLE, font=("Segoe UI", 24, "bold"), bg="black", fg="white").pack(anchor="w", pady=(12, 0))
 
         stats = tk.Frame(main, bg="white")
@@ -117,6 +118,37 @@ class App:
         self.box.pack(fill="both", expand=True)
         self.log(f"[INFO] Folder programu: {self.base_dir}")
         self.log(f"[INFO] Folder pobierania: {self.download_dir}")
+
+    def load_logo(self, parent):
+        folders = [
+            os.path.join(self.base_dir, "grafiki"),
+            os.path.join(self.base_dir, "grafika"),
+            self.base_dir,
+        ]
+        names = ["logo.png", "emerloglogo.png", "emerlog_logo.png", "Logo.png", "LOGO.png"]
+        candidates = []
+        for folder in folders:
+            for name in names:
+                candidates.append(os.path.join(folder, name))
+            try:
+                for name in os.listdir(folder):
+                    if name.lower().endswith((".png", ".gif")):
+                        candidates.append(os.path.join(folder, name))
+            except Exception:
+                pass
+        for path in candidates:
+            if not os.path.exists(path):
+                continue
+            try:
+                self.logo_img = tk.PhotoImage(file=path)
+                if self.logo_img.width() > 560:
+                    factor = max(1, self.logo_img.width() // 560)
+                    self.logo_img = self.logo_img.subsample(factor, factor)
+                tk.Label(parent, image=self.logo_img, bg="black").pack(anchor="w")
+                return
+            except Exception:
+                pass
+        tk.Label(parent, text="EMERLOG", font=("Segoe UI", 28, "bold italic"), bg="black", fg="white").pack(anchor="w")
 
     def stat(self, parent, title, var):
         frame = tk.Frame(parent, bg="white", bd=1, relief="solid", padx=14, pady=12)
