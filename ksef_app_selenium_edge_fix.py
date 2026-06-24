@@ -434,28 +434,39 @@ class App:
             time.sleep(1)
         return None
 
-    def download_selected(self, session, batch_size):
-        self.set_download_dir(session)
+    def try_download_format(self, session, button_candidates, timeout, signal_timeout, label):
         before = self.snapshot([session, self.download_dir])
         open_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a][contains(., 'Pobierz') or contains(., 'Eksportuj')]")]
-        zip_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'zip', 'ZIP'), 'ZIP')]")]
-        pdf_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'pdf', 'PDF'), 'PDF')]")]
-        if not self.click_any(open_btn, 3, 0.6):
+        if not self.click_any(open_btn, 3, 0.5):
             self.close_popups()
             return None
-        if self.click_any(zip_btn, 2, 0.6):
-            self.log("[INFO] Wybrano ZIP")
-        elif self.click_any(pdf_btn, 2, 0.6):
-            self.log("[INFO] Wybrano PDF")
-        else:
+        if not self.click_any(button_candidates, 2, 0.5):
             self.close_popups()
             return None
-        timeout = DOWNLOAD_TIMEOUTS.get(batch_size, 45)
-        signal_timeout = NO_DOWNLOAD_SIGNAL_TIMEOUTS.get(batch_size, 10)
+        self.log(f"[INFO] Wybrano {label}")
         found = self.wait_file(session, before, timeout, signal_timeout)
         if found is None:
             self.close_popups()
         return found
+
+    def download_selected(self, session, batch_size):
+        self.set_download_dir(session)
+        timeout = DOWNLOAD_TIMEOUTS.get(batch_size, 45)
+        signal_timeout = NO_DOWNLOAD_SIGNAL_TIMEOUTS.get(batch_size, 10)
+        zip_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'zip', 'ZIP'), 'ZIP')]")]
+        pdf_btn = [(By.XPATH, "//*[self::button or @role='button' or self::a or self::span][contains(translate(., 'pdf', 'PDF'), 'PDF')]")]
+
+        found = self.try_download_format(session, zip_btn, timeout, signal_timeout, "ZIP")
+        if found:
+            return found
+
+        if batch_size == 1:
+            self.log("[INFO] ZIP nie ruszył dla pojedynczej FV. Próbuję PDF.")
+            found = self.try_download_format(session, pdf_btn, 30, 10, "PDF")
+            if found:
+                return found
+
+        return None
 
     def extract_zip(self, path, session):
         if zipfile.is_zipfile(path):
@@ -477,7 +488,7 @@ class App:
         self.log(f"[INFO] Pobieram partię {batch_no}. Rozmiar: {len(selected)} FV")
         path = self.download_selected(session, len(selected))
         if not path:
-            self.log(f"[UWAGA] Nie widać startu pobierania. Bez czekania 120 s przechodzę dalej.")
+            self.log("[UWAGA] Pobieranie nie ruszyło. Przechodzę dalej i zapiszę tę FV w notatce.")
             self.clear_checks()
             return None
         self.log(f"[OK] Zapisano: {os.path.basename(path)}")
@@ -522,7 +533,7 @@ class App:
                     time.sleep(0.4)
                 else:
                     failed.add(remaining[0]["id"])
-                    self.log(f"[BŁĄD] Ta FV nie wystartowała. Zostawiam do retry: {remaining[0]['text'][:160]}")
+                    self.log(f"[BŁĄD] Ta FV nie wystartowała. Zostawiam do retry i notatki: {remaining[0]['text'][:160]}")
             if len(processed) >= len(target_ids):
                 break
             if not self.next_page():
@@ -531,19 +542,40 @@ class App:
         return processed, missing
 
     def save_reports(self, session, manifest, processed, retries, missing):
-        with open(os.path.join(session, "info.txt"), "w", encoding="utf-8") as f:
+        info_path = os.path.join(session, "info.txt")
+        with open(info_path, "w", encoding="utf-8") as f:
+            f.write(f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Znalezione FV: {len(manifest)}\nPobrane FV: {len(processed)}\nPróby naprawcze: {retries}\nBrakujące: {len(missing)}\n")
+
         audit = os.path.join(session, "raport_weryfikacji.txt")
         with open(audit, "w", encoding="utf-8") as f:
+            f.write("STATUS | ID / NUMER | OPIS Z WIERSZA KSEF\n")
+            f.write("=" * 90 + "\n")
             for item in manifest:
                 f.write(("POBRANE" if item["row_id"] in processed else "BRAK") + f" | {item['row_id']} | {item['text']}\n")
+
         miss = None
+        note = None
         if missing:
             miss = os.path.join(session, "brakujace_fv.txt")
+            note = os.path.join(session, "NIEPOBRANE_DO_SPRAWDZENIA.txt")
             with open(miss, "w", encoding="utf-8") as f:
                 for item in missing:
                     f.write(f"{item['row_id']} | {item['text']}\n")
-        return audit, miss
+            with open(note, "w", encoding="utf-8") as f:
+                f.write("FV, których program nie mógł pobrać automatycznie\n")
+                f.write("=" * 70 + "\n")
+                f.write(f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Liczba brakujących FV: {len(missing)}\n\n")
+                f.write("Co zrobić ręcznie:\n")
+                f.write("1. Wejdź w KSeF na tej samej liście/filtrach.\n")
+                f.write("2. Wyszukaj po numerze/id z listy poniżej.\n")
+                f.write("3. Spróbuj pobrać ręcznie z podglądu faktury.\n")
+                f.write("4. Jeżeli ręcznie też nie idzie, to problem jest po stronie tej pozycji/KSeF.\n\n")
+                f.write("Lista braków:\n")
+                for index, item in enumerate(missing, start=1):
+                    f.write(f"{index}. {item['row_id']} | {item['text']}\n")
+        return audit, miss, note
 
     def download_all(self):
         try:
@@ -568,12 +600,14 @@ class App:
                 retries += 1
                 self.log(f"[INFO] Próba naprawcza {retries}/{MAX_RETRY_PASSES}, braków: {len(missing)}")
                 processed, missing = self.process(set(x["row_id"] for x in missing), target, session, processed)
-            audit, miss = self.save_reports(session, manifest, processed, retries, missing)
+            audit, miss, note = self.save_reports(session, manifest, processed, retries, missing)
             self.log(f"[INFO] Raport: {audit}")
+            if note:
+                self.log(f"[INFO] Notatka braków: {note}")
             if missing:
                 self.stop("Zakończono z brakami")
                 self.result_var.set(f"Pobrane: {len(processed)} z {len(ids)} FV | Brakuje: {len(missing)}")
-                messagebox.showwarning("Niepełne pobranie", f"Pobrano {len(processed)} z {len(ids)} FV.\nBraki: {len(missing)}\nLista: {miss}")
+                messagebox.showwarning("Niepełne pobranie", f"Pobrano {len(processed)} z {len(ids)} FV.\nBraki: {len(missing)}\n\nNotatka: {note}\nLista: {miss}")
             else:
                 self.stop("Gotowe")
                 self.result_var.set(f"Pobrane: {len(processed)} z {len(ids)} FV")
