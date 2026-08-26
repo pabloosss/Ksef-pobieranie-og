@@ -1,25 +1,34 @@
 # KSeF Pobieranie OG
 
-Repozytorium programu do pobierania faktur z Aplikacji Podatnika KSeF 2.0.
+Program do pobierania większej liczby faktur z Aplikacji Podatnika KSeF 2.0.
 
-## Wersja testowa do dużych pobrań
+## Uruchomienie
 
-Uruchamiaj `ksef_large_download_fix.py` albo zbuduj EXE przez `build_fix_exe.bat`.
+Uruchom:
 
-Najważniejsze poprawki:
-- maksymalnie 10 FV w jednej operacji pobrania — zgodnie z limitem KSeF 2.0,
-- każda strona jest dzielona na paczki po maks. 10 FV,
-- wybierany jest format PDF; przy kilku fakturach KSeF sam zwraca ZIP,
-- retry nieudanej paczki,
-- fallback 10 -> 5 -> 1 FV zamiast przerwania całej operacji,
+`ksef_large_download_fix.py`
+
+albo zbuduj wersję EXE przez:
+
+`build_fix_exe.bat`
+
+## Najważniejsze funkcje
+
+- pobieranie faktur partiami zgodnie z limitem KSeF,
+- maksymalnie 10 FV w jednej operacji,
+- automatyczny podział większych zestawów na paczki,
+- retry nieudanych pobrań,
+- fallback 10 -> 5 -> 1 FV zamiast zatrzymania całego procesu,
+- obsługa PDF i ZIP,
 - dłuższe oczekiwanie na wygenerowanie pliku,
-- krótka przerwa między paczkami i po dłuższej serii,
-- poprawione rozpoznawanie numeru KSeF z literami w końcówce,
-- `run_log.txt`, raport weryfikacji i folder `debug` ze screenshotem/HTML po nieudanej paczce.
+- przerwy między paczkami przy dużych pobraniach,
+- rozpoznawanie numerów KSeF z literami w końcówce,
+- log działania i dane diagnostyczne przy błędach.
 
-## Stara wersja
+## Pliki
 
-`ksef_app_selenium_edge_fix.py` zostaje na razie bez zmian jako punkt odniesienia. Przed poprawką utworzono także branch:
-`backup/pre-large-download-fix-20260826`.
+- `ksef_large_download_fix.py` — główny program,
+- `build_fix_exe.bat` — budowanie wersji EXE,
+- `requirements.txt` — wymagane pakiety Pythona.
 
-Po potwierdzeniu, że nowa wersja przechodzi duże zestawy (np. 300+ FV), można podmienić nią główny plik programu.
+Starsza wersja programu jest zachowana w historii Git oraz na branchu `backup/pre-large-download-fix-20260826`.
