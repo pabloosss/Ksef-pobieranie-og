@@ -43,6 +43,7 @@ if exist dist\Ksef-Pobieranie-FIX.exe del /f /q dist\Ksef-Pobieranie-FIX.exe
   --hidden-import selenium.webdriver.edge.options ^
   --hidden-import selenium.webdriver.edge.service ^
   --hidden-import selenium.webdriver.common.service ^
+  --runtime-hook ksef_runtime_fix.py ^
   ksef_final.py
 if errorlevel 1 goto :err
 
