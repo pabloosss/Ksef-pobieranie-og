@@ -24,6 +24,11 @@ if errorlevel 1 goto :err
 %PY_CMD% -m pip install -r requirements.txt
 if errorlevel 1 goto :err
 
+echo.
+echo [INFO] Sprawdzam Selenium Edge...
+%PY_CMD% -c "from selenium.webdriver.edge.webdriver import WebDriver; from selenium.webdriver.edge.options import Options; from selenium.webdriver.edge.service import Service; print('[OK] Selenium Edge jest dostepne')"
+if errorlevel 1 goto :err
+
 if exist build\Ksef-Pobieranie-FIX rmdir /s /q build\Ksef-Pobieranie-FIX
 if exist dist\Ksef-Pobieranie-FIX.exe del /f /q dist\Ksef-Pobieranie-FIX.exe
 
@@ -33,6 +38,11 @@ if exist dist\Ksef-Pobieranie-FIX.exe del /f /q dist\Ksef-Pobieranie-FIX.exe
   --onefile ^
   --windowed ^
   --name Ksef-Pobieranie-FIX ^
+  --collect-all selenium ^
+  --hidden-import selenium.webdriver.edge.webdriver ^
+  --hidden-import selenium.webdriver.edge.options ^
+  --hidden-import selenium.webdriver.edge.service ^
+  --hidden-import selenium.webdriver.common.service ^
   ksef_final.py
 if errorlevel 1 goto :err
 
@@ -49,6 +59,6 @@ exit /b 0
 :err
 echo.
 echo [BLAD] Build EXE nie powiodl sie.
-echo Stary EXE zostal usuniety, wiec nie uruchomisz przypadkiem starej wersji.
+echo Sprawdz komunikat wyzej - stary EXE zostal usuniety.
 pause
 exit /b 1
