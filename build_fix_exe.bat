@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo =====================================
-echo KSeF - build FIX EXE
+echo KSeF - build FAST v2 EXE
 echo =====================================
 
 python --version >nul 2>nul
@@ -31,11 +31,11 @@ if exist build\Ksef-Pobieranie-FIX rmdir /s /q build\Ksef-Pobieranie-FIX
   --onefile ^
   --windowed ^
   --name Ksef-Pobieranie-FIX ^
-  ksef_large_download_fix.py
+  ksef_fast_patch.py
 if errorlevel 1 goto :err
 
 echo.
-echo [OK] Gotowe:
+echo [OK] Gotowe - FAST v2:
 echo %cd%\dist\Ksef-Pobieranie-FIX.exe
 start "" explorer "%cd%\dist"
 pause
