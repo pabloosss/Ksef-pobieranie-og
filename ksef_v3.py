@@ -2,6 +2,8 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 
+from selenium.webdriver.common.by import By
+
 import ksef_fast_patch as fast
 from emerlog_logo_b64 import EMERLOG_LOGO_B64
 
@@ -92,6 +94,16 @@ class KsefV3(fast.FastKsefDownloader):
             messagebox.showinfo("Pobieranie w toku", "Poczekaj na zakończenie pobierania przed zamknięciem programu.")
             return
         super().close()
+
+    def _next_candidates(self):
+        return [
+            (By.CSS_SELECTOR, "button[aria-label*='Następna']"),
+            (By.CSS_SELECTOR, "button[title*='Następna']"),
+            (By.CSS_SELECTOR, "[role='button'][aria-label*='Następna']"),
+            (By.CSS_SELECTOR, "button[aria-label*='Next']"),
+            (By.CSS_SELECTOR, "button[title*='Next']"),
+            (By.XPATH, "//button[contains(normalize-space(.),'Następna') or contains(normalize-space(.),'Next')]"),
+        ]
 
     def has_next_page(self):
         for by, value in self._next_candidates():
