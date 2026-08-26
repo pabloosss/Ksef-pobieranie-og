@@ -25,24 +25,30 @@ if errorlevel 1 goto :err
 if errorlevel 1 goto :err
 
 if exist build\Ksef-Pobieranie-FIX rmdir /s /q build\Ksef-Pobieranie-FIX
+if exist dist\Ksef-Pobieranie-FIX.exe del /f /q dist\Ksef-Pobieranie-FIX.exe
 
 %PY_CMD% -m PyInstaller ^
   --noconfirm ^
+  --clean ^
   --onefile ^
   --windowed ^
   --name Ksef-Pobieranie-FIX ^
   ksef_final.py
 if errorlevel 1 goto :err
 
+if not exist "%cd%\dist\Ksef-Pobieranie-FIX.exe" goto :err
+
 echo.
 echo [OK] Gotowe:
 echo %cd%\dist\Ksef-Pobieranie-FIX.exe
 start "" explorer "%cd%\dist"
+start "" "%cd%\dist\Ksef-Pobieranie-FIX.exe"
 pause
 exit /b 0
 
 :err
 echo.
 echo [BLAD] Build EXE nie powiodl sie.
+echo Stary EXE zostal usuniety, wiec nie uruchomisz przypadkiem starej wersji.
 pause
 exit /b 1
